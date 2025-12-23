@@ -444,7 +444,9 @@ def get_recommendations(movies, underrated=False, offset=0, count=8):
         return [], "Sorry, I couldn't generate any recommendations in the expected format. Please try again with different movies."
         
     except Exception as e:
-        return f"An error occurred while generating recommendations: {str(e)}"
+        error_msg = f"An error occurred while generating recommendations: {str(e)}"
+        print(error_msg)  # Log the error for debugging
+        return [], error_msg
 
 # ----------------------------
 # Action
