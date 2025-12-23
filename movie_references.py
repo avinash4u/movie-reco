@@ -18,7 +18,7 @@ def scrape_reddit(movie):
     results = []
     seen_urls = set()  # Track seen URLs to avoid duplicates
     search_url = f"https://www.reddit.com/search/?q={movie}+recommendation"
-
+    print("Reddit search URL:", search_url)  # Debug log
     try:
         res = session.get(search_url, timeout=10)
         soup = BeautifulSoup(res.text, "html.parser")
@@ -28,7 +28,7 @@ def scrape_reddit(movie):
                 soup.select("a[href^='/r/']") or
                 soup.select("a[href*='comments/']") or
                 soup.select("a[href*='reddit.com/r/']"))
-        
+        print("Reddit posts", posts)  # Debug log
         for post in posts:
             try:
                 title = post.get_text(strip=True)
