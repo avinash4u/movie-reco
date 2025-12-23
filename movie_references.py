@@ -13,52 +13,44 @@ session.headers.update({
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 })
 
-def scrape_reddit(movie):
-    """Scrape Reddit for movie recommendations"""
-    results = []
-    seen_urls = set()  # Track seen URLs to avoid duplicates
-    search_url = f"https://www.reddit.com/search/?q={movie}+recommendation"
-    print("Reddit search URL:", search_url)  # Debug log
+def scrape_reddit(movie, limit=5):
+    """Search Reddit for movie recommendations using the JSON API"""
+    url = "https://www.reddit.com/search.json"
+    headers = {
+        "User-Agent": "movie-reco-app/1.0 (contact: your_email@example.com)"
+    }
+    params = {
+        "q": f"{movie} recommendation",
+        "sort": "relevance",
+        "limit": limit
+    }
+
     try:
-        res = session.get(search_url, timeout=10)
-        print("Reddit res", res)  # Debug log
-        soup = BeautifulSoup(res.text, "html.parser")
+        res = session.get(url, headers=headers, params=params, timeout=10)
         
-        # Try multiple selectors for Reddit's dynamic content
-        posts = (soup.select("a[data-click-id='body']") or 
-                soup.select("a[href^='/r/']") or
-                soup.select("a[href*='comments/']") or
-                soup.select("a[href*='reddit.com/r/']"))
-        print("Reddit posts", posts)  # Debug log
-        for post in posts:
-            try:
-                title = post.get_text(strip=True)
-                url = post["href"]
-                if not url.startswith('http'):
-                    url = f"https://www.reddit.com{url}"
-                
-                # Skip if we've seen this URL before
-                if url in seen_urls:
-                    continue
-                    
-                seen_urls.add(url)
-                
-                if movie.lower() in title.lower():
-                    results.append({
-                        "platform": "Reddit",
-                        "source": title[:80],
-                        "url": url
-                    })
-                    # Limit to 3 results from Reddit
-                    if len(results) >= 3:
-                        break
-            except Exception:
-                continue
+        if res.status_code != 200:
+            print(f"Error from Reddit API: {res.status_code}")
+            return []
+
+        data = res.json()
+        results = []
+
+        for post in data.get("data", {}).get("children", []):
+            d = post.get("data", {})
+            results.append({
+                "platform": "Reddit",
+                "source": d.get("title", "")[:80],
+                "url": "https://www.reddit.com" + d.get("permalink", "")
+            })
+            
+            # Limit to the requested number of results
+            if len(results) >= limit:
+                break
                 
     except Exception as e:
         print(f"Error scraping Reddit: {e}")
-    
-    print("Reddit scrape Response:", results)  # Debug log
+        return []
+        
     return results
 
 def scrape_quora(movie):
