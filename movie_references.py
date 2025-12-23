@@ -56,7 +56,8 @@ def scrape_reddit(movie):
                 
     except Exception as e:
         print(f"Error scraping Reddit: {e}")
-        
+    
+    print("Reddit scrape Response:", results)  # Debug log
     return results
 
 def scrape_quora(movie):
