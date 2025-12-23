@@ -2,6 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 from googleapiclient.discovery import build
 import urllib3
+import time
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -14,44 +15,51 @@ session.headers.update({
 })
 
 def scrape_reddit(movie, limit=5):
-    """Search Reddit for movie recommendations using the JSON API"""
-    url = "https://www.reddit.com/search.json"
+    """Search Reddit for movie recommendations using the old.reddit.com JSON API"""
+    url = "https://old.reddit.com/search.json"
+    
+    # Use the existing session with SSL verification disabled
     headers = {
-        "User-Agent": "movie-reco-app/1.0 (contact: your_email@example.com)"
+        **session.headers,  # Include existing session headers
+        "User-Agent": "movie-reco-bot/0.1 (by u/your_reddit_username)"
     }
+    
     params = {
         "q": f"{movie} recommendation",
         "sort": "relevance",
-        "limit": limit
+        "limit": limit,
+        "restrict_sr": False
     }
 
     try:
-        res = session.get(url, headers=headers, params=params, timeout=10)
-        
+        res = session.get(
+            url,
+            headers=headers,
+            params=params,
+            timeout=10
+        )
+
         if res.status_code != 200:
-            print(f"Error from Reddit API: {res.status_code}")
+            print("Reddit error:", res.status_code)
             return []
 
         data = res.json()
         results = []
 
-        for post in data.get("data", {}).get("children", []):
-            d = post.get("data", {})
+        for post in data["data"]["children"]:
+            d = post["data"]
             results.append({
                 "platform": "Reddit",
-                "source": d.get("title", "")[:80],
+                "source": d.get("title", ""),
                 "url": "https://www.reddit.com" + d.get("permalink", "")
             })
-            
-            # Limit to the requested number of results
-            if len(results) >= limit:
-                break
-                
+
+        time.sleep(1)  # Rate limiting to avoid hitting rate limits
+        return results[:limit]
+
     except Exception as e:
-        print(f"Error scraping Reddit: {e}")
+        print("Reddit exception:", e)
         return []
-        
-    return results
 
 def scrape_quora(movie):
     """Scrape Quora for movie recommendations"""
