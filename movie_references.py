@@ -21,6 +21,7 @@ def scrape_reddit(movie):
     print("Reddit search URL:", search_url)  # Debug log
     try:
         res = session.get(search_url, timeout=10)
+        print("Reddit res", res)  # Debug log
         soup = BeautifulSoup(res.text, "html.parser")
         
         # Try multiple selectors for Reddit's dynamic content
