@@ -37,16 +37,24 @@ def get_movie_references_cached(title):
 # UI
 # ----------------------------
 st.set_page_config(
-    page_title="AI Movie Recommender", 
+    page_title="AI Content Recommender", 
     layout="centered",
     page_icon="🎬"
 )
 
-
+# Initialize session state variables at the very beginning
+if 'content_type' not in st.session_state:
+    st.session_state.content_type = 'movies'
+if 'show_more' not in st.session_state:
+    st.session_state.show_more = False
+if 'recommendations' not in st.session_state:
+    st.session_state.recommendations = []
+if 'current_count' not in st.session_state:
+    st.session_state.current_count = 8
 
 # Apply custom CSS for dark theme
-def get_movie_details(title, year=None):
-    """Fetch movie details from OMDB API"""
+def get_movie_details(title, year=None, content_type='movie'):
+    """Fetch movie/TV show details from OMDB API"""
     try:
         if not title or not title.strip():
             raise ValueError("Empty title provided")
@@ -62,7 +70,7 @@ def get_movie_details(title, year=None):
             't': search_title,
             'plot': 'short',
             'r': 'json',
-            'type': 'movie',
+            'type': 'series' if content_type == 'web_series' else 'movie',
             'y': year if (year and str(year).isdigit() and len(str(year)) == 4) else None
         }
         
@@ -74,7 +82,7 @@ def get_movie_details(title, year=None):
             params['y'] = str(year)
         
         # Print debug info
-        print(f"Fetching movie: {title} ({year if year else 'no year'})")
+        print(f"Fetching {content_type}: {title} ({year if year else 'no year'})")
         
         response = requests.get('http://www.omdbapi.com/', params=params, timeout=10)
         response.raise_for_status()  # Raises an HTTPError for bad responses
@@ -88,12 +96,23 @@ def get_movie_details(title, year=None):
             if poster_url == 'N/A':
                 poster_url = ''
                 
+            # Get rating from IMDB if available
+            rating = 'N/A'
+            if 'imdbRating' in data and data['imdbRating'] != 'N/A':
+                rating = f"{data['imdbRating']}/10 (IMDb)"
+            
+            # Get genre and runtime
+            genre = data.get('Genre', 'N/A')
+            runtime = data.get('Runtime', 'N/A')
+            
             return {
                 'title': data.get('Title', title),
-                'year': data.get('Year', year),
-                'rating': data.get('imdbRating', 'N/A'),
+                'year': data.get('Year', ''),
+                'rating': rating,
                 'poster': poster_url,
-                'genre': data.get('Genre', 'N/A'),
+                'genre': genre,
+                'runtime': runtime,
+                'type': 'TV Series' if content_type == 'web_series' else 'Movie',
                 'response': data.get('Response', 'False')
             }
         else:
@@ -163,10 +182,11 @@ st.markdown("""
     }
     
     .movie-poster {
-        width: 100px;
-        height: 150px;
+        width: 150px;
+        height: 225px;
         object-fit: cover;
-        border-radius: 5px;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     }
     
     .movie-info {
@@ -182,16 +202,35 @@ st.markdown("""
     .movie-meta {
         color: #a0aec0;
         font-size: 0.9em;
-        margin-bottom: 5px;
+        margin: 5px 0 10px 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    
+    .content-type {
+        color: #63b3ed;
+        font-weight: 500;
+    }
+    
+    .content-genre {
+        color: #a0aec0;
+    }
+    
+    .content-runtime {
+        color: #a0aec0;
     }
     
     .movie-rating {
         display: inline-flex;
         align-items: center;
         background: #2d3748;
-        padding: 2px 8px;
-        border-radius: 10px;
-        font-size: 0.8em;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 0.9em;
+        margin: 8px 0;
+        color: #f6e05e;
+        font-weight: 600;
     }
     
     /* Text color */
@@ -279,55 +318,71 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🎬 AI Movie Recommendation Agent")
+st.markdown(f"Enter your favorite {st.session_state.content_type.replace('_', ' ')} and get personalized recommendations!")
 
-st.write("Enter up to **3 movies you like**, and the AI will recommend similar movies.")
+# Content type radio button
 
-# Movie inputs
+# Set the title based on content type
+content_title = "🎬 AI " + ("Movie" if st.session_state.content_type == 'movies' else "Web Series") + " Recommender"
+st.title(content_title)
+
+# Content type radio button
+content_type = st.radio(
+    "Select content type:",
+    ['🎬 Movies', '📺 Web Series'],
+    horizontal=True,
+    index=0 if st.session_state.get('content_type', 'movies') == 'movies' else 1,
+    key='content_type_radio'
+)
+st.session_state.content_type = 'movies' if content_type == '🎬 Movies' else 'web_series'
+
+# Underrated toggle
+underrated = st.checkbox(
+    f"Show underrated/hidden {'gems' if st.session_state.content_type == 'movies' else 'shows'}",
+    value=False,
+    key='underrated_toggle'
+)
+
+# Content inputs
 col1, col2, col3 = st.columns(3)
 with col1:
-    movie1 = st.text_input("Movie 1", key="movie1")
+    movie1 = st.text_input(f"{st.session_state.content_type.replace('_', ' ').title()} 1", key="movie1")
 with col2:
-    movie2 = st.text_input("Movie 2 (optional)", key="movie2")
+    movie2 = st.text_input(f"{st.session_state.content_type.replace('_', ' ').title()} 2 (optional)", key="movie2")
 with col3:
-    movie3 = st.text_input("Movie 3 (optional)", key="movie3")
-
-# Underrated movies option
-underrated = st.checkbox("Show only underrated movies", 
-                        help="Check this to see lesser-known or underappreciated movie recommendations")
+    movie3 = st.text_input(f"{st.session_state.content_type.replace('_', ' ').title()} 3 (optional)", key="movie3")
 
 movies = [m for m in [movie1, movie2, movie3] if m.strip()]
 
-# Initialize session states
-if 'show_more' not in st.session_state:
-    st.session_state.show_more = False
-if 'recommendations' not in st.session_state:
-    st.session_state.recommendations = []
-if 'current_count' not in st.session_state:
-    st.session_state.current_count = 8  # Initial number of recommendations to show
-
 # ----------------------------
-# Prompt builder
 # ----------------------------
-def build_prompt(movies, underrated=False):
+def build_prompt(items, underrated=False, content_type='movies'):
+    # Set content type variables
+    content_type_display = "movies" if content_type == "movies" else "TV series"
+    single_type = "movie" if content_type == "movies" else "TV series"
+    other_type = "TV series" if content_type == "movies" else "movies"
+    
+    # Handle underrated note
     underrated_note = ""
     if underrated:
-        underrated_note = """
-IMPORTANT: Focus on recommending underrated, hidden gem, or lesser-known movies that are often overlooked.
-Prioritize movies that are critically acclaimed but may not have received widespread recognition or box office success.
+        underrated_note = f"""
+IMPORTANT: Focus on recommending underrated, hidden gem, or lesser-known {content_type_display} that are often overlooked.
+Prioritize {content_type_display} that are critically acclaimed but may not have received widespread recognition.
 """
+    
     return f"""
-You are an expert movie recommendation system. Your ONLY TASK is to recommend EXACTLY 16 movies similar to the ones the user likes.
+You are an expert {content_type_display} recommendation system. Your ONLY TASK is to recommend EXACTLY 16 {content_type_display} similar to the ones the user likes.
 {underrated_note}
 
 CRITICAL INSTRUCTIONS - READ CAREFULLY:
-1. You MUST provide EXACTLY 16 movie recommendations
-2. Do NOT stop until you have listed all 16 movies
+1. You MUST provide EXACTLY 16 {content_type} recommendations (NO {other_type} ALLOWED)
+2. Do NOT stop until you have listed all 16 {content_type}
 3. Do NOT include any other text before or after the list
-4. Include movies from various languages and genres
-5. For each movie, include the language in square brackets after the title
+4. Include {content_type} from various languages and genres
+5. For each {single_type}, include the language in square brackets after the title
 6. Make sure the first 8 recommendations are the most relevant
 7. The remaining 8 can be slightly less relevant but still good matches
+8. IMPORTANT: Only include {content_type} in the recommendations - NO {other_type} ALLOWED
 
 User's favorite movies: {', '.join(movies)}
 
@@ -338,6 +393,35 @@ REQUIRED FORMAT:
 16. Movie Title (Year) [Language] - Brief reason
 
 EXAMPLE:
+
+Now, please provide EXACTLY 16 movie recommendations following the format above:
+"""
+
+# ----------------------------
+# LLM Call
+# ----------------------------
+def get_recommendations(items, underrated=False, offset=0, count=8, content_type='movies'):
+    try:
+        # Get the prompt with proper content type handling
+        prompt = build_prompt(items, underrated=underrated, content_type=content_type)
+        
+        # Set content type display variables
+        content_type_display = "movies" if content_type == "movies" else "TV series"
+        single_type = "movie" if content_type == "movies" else "TV series"
+        other_type = "TV series" if content_type == "movies" else "movies"
+        
+        # Create the full prompt with clear instructions
+        full_prompt = f"""You are a helpful {content_type_display} recommendation agent. Your ONLY TASK is to list EXACTLY 16 {content_type_display} in the requested format. 
+
+IMPORTANT: DO NOT include any {other_type} in the recommendations. Only {content_type_display} are allowed.
+
+FORMAT REQUIREMENTS:
+1. Each recommendation must be on a new line
+2. Each line must start with a number followed by a dot (e.g., "1. ", "2. ", etc.)
+3. Each recommendation should follow this pattern: "[Number]. [Title] ([Year]) [Language] - [Brief description]"
+4. Do not include any other text before or after the list
+
+Here are examples of the expected format for {content_type_display}:
 1. The Shawshank Redemption (1994) [English] - A powerful story of hope and friendship
 2. 3 Idiots (2009) [Hindi] - A heartwarming comedy about friendship and education
 3. Parasite (2019) [Korean] - A masterful social satire with perfect pacing
@@ -347,30 +431,11 @@ EXAMPLE:
 7. Dilwale Dulhania Le Jayenge (1995) [Hindi] - The ultimate Bollywood romance
 8. Amélie (2001) [French] - A whimsical tale of a shy waitress in Paris
 
-Now, please provide EXACTLY 16 movie recommendations following the format above:
-"""
+Now, please provide 16 {content_type_display} recommendations for: {', '.join(items)}
 
-# ----------------------------
-# LLM Call
-# ----------------------------
-def get_recommendations(movies, underrated=False, offset=0, count=8):
-    try:
-        prompt = build_prompt(movies, underrated=underrated)
-        
-        # Add system instruction as part of the prompt for Gemini
-        full_prompt = """You are a helpful movie recommendation agent. Your ONLY TASK is to list EXACTLY 16 movies in the requested format.
-        
-        FORMAT REQUIREMENTS:
-        1. Each recommendation must be on a new line
-        2. Each line must start with a number followed by a dot (e.g., "1. ", "2. ", etc.)
-        3. Each recommendation should follow this pattern: "[Number]. [Movie Title] ([Year]) [Language] - [Brief description]"
-        4. Do not include any other text before or after the list
-        
-        Here's an example of the expected format:
-        1. The Shawshank Redemption (1994) [English] - A powerful story of hope and friendship
-        2. 3 Idiots (2009) [Hindi] - A heartwarming comedy about friendship and education
-        
-        Now, please provide 16 movie recommendations for: """ + ", ".join(movies) + "\n\n" + prompt
+IMPORTANT: Only include {content_type_display} in your response, no {other_type} allowed.
+
+{prompt}"""
         
         # Generate content using Gemini with more specific parameters
         response = model.generate_content(
@@ -452,13 +517,18 @@ def get_recommendations(movies, underrated=False, offset=0, count=8):
 # Action
 # ----------------------------
 # Handle the recommend button click
-if st.button("🎯 Recommend Movies"):
+button_label = "🎯 Recommend " + ("Movies" if st.session_state.content_type == 'movies' else "Web Series")
+if st.button(button_label):
     if not movies:
-        st.warning("Please enter at least one movie.")
+        st.warning(f"Please enter at least one {st.session_state.content_type}.")
     else:
         with st.spinner("Thinking like a cinephile..."):
             # Get all recommendations and store in session state
-            all_recommendations, error = get_recommendations(movies, underrated=underrated)
+            all_recommendations, error = get_recommendations(
+                movies, 
+                underrated=underrated, 
+                content_type=st.session_state.content_type
+            )
             if not error and all_recommendations:
                 st.session_state.recommendations = all_recommendations
                 st.session_state.current_count = 8  # Show first 8 recommendations
@@ -486,7 +556,7 @@ if st.session_state.get('recommendations') and st.session_state.get('last_search
         # Display the recommendations with posters and ratings
         for rec in current_recommendations:
             title, year = extract_movie_info(rec)
-            movie_data = get_movie_details(title, year)
+            movie_data = get_movie_details(title, year, content_type=st.session_state.content_type)
             references = get_movie_references_cached(title)
 
             # Create columns for poster and info
@@ -498,33 +568,37 @@ if st.session_state.get('recommendations') and st.session_state.get('last_search
                     if movie_data.get('poster') and movie_data['poster'] not in ('', 'N/A'):
                         st.image(
                             movie_data['poster'],
-                            width=100,
+                            width=150,
                             use_container_width=False,
                             output_format='PNG'
                         )
                     else:
                         st.image(
-                            'https://via.placeholder.com/100x150/1e2229/2d3748?text=No+Poster',
-                            width=100,
+                            'https://via.placeholder.com/150x225/1e2229/2d3748?text=No+Image',
+                            width=150,
                             use_container_width=False
                         )
                 except Exception as e:
                     print(f"Error displaying poster for {title}: {e}")
                     st.image(
-                        'https://via.placeholder.com/100x150/1e2229/2d3748?text=No+Poster',
-                        width=100,
+                        'https://via.placeholder.com/150x225/1e2229/2d3748?text=No+Image',
+                        width=150,
                         use_container_width=False
                     )
             
             with col2:
-                # Display movie info
+                # Display content info
                 st.markdown(f"""
                     <div class="movie-card">
                         <div class="movie-info">
                             <div class="movie-title">{movie_data['title']} ({movie_data.get('year', 'N/A')})</div>
-                            <div class="movie-meta">{movie_data.get('genre', 'N/A')}</div>
+                            <div class="movie-meta">
+                                <span class="content-type">{movie_data.get('type', 'Movie')}</span> • 
+                                <span class="content-genre">{movie_data.get('genre', 'N/A')}</span> • 
+                                <span class="content-runtime">{movie_data.get('runtime', 'N/A')}</span>
+                            </div>
                             <div class="movie-rating" title="IMDb Rating">
-                                ⭐ {movie_data.get('rating', 'N/A')}/10 (IMDb)
+                                ⭐ {movie_data.get('rating', 'N/A')}
                             </div>
                             <div class="movie-plot">
                                 {rec}
@@ -564,7 +638,7 @@ if st.session_state.get('recommendations') and st.session_state.get('last_search
 if 'error' in locals() and error:
     st.error(error)
 elif not st.session_state.get('recommendations'):
-    st.info("Enter some movies and click 'Recommend Movies' to get started.")
+    st.info(f"Enter some {st.session_state.content_type} and click 'Recommend {'Movies' if st.session_state.content_type == 'movies' else 'Web Series'}' to get started.")
 
 # Add CSS for the recommendations
 st.markdown("""
